@@ -1,0 +1,177 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <script type="text/javascript" src="Three.js"></script>
+    <script type="text/javascript" src="ammo.js"></script>
+    <style type="text/css">
+        * {
+            overflow: hidden;
+            margin: 0;
+            padding: 0;
+        }
+    </style>
+</head>
+<body>
+    <script type="text/javascript">
+        "use strict";
+
+        (function () { //extensions			
+            Ammo.btVector3.prototype.toThree = function () {
+                return new THREE.Vector3(this.x, this.y, this.z);
+            };
+        })();
+
+        var scene, renderer, camera, worker, curve, curvePoints, sphere, simulating = false, updateCameraPos = true, clock = new THREE.Clock();
+
+        init();
+        initPhysicsSimulation();
+        animate();
+
+        function init() {
+            worker = new Worker("phworker.js");
+
+            // scene
+            scene = new THREE.Scene();
+            scene.fog = new THREE.Fog(0xD9E9FF, 1000, 10000);
+
+            // camera
+            camera = new THREE.PerspectiveCamera(70, window.innerWidth / window.innerHeight, 1, 10000);
+            camera.position.set(0, 500, 750);
+            camera.startPosition = camera.position.clone();
+            camera.orbitTheta = 0;
+            scene.add(camera);
+
+            // some light !
+            scene.add(new THREE.AmbientLight(0xD6D98F));
+
+            var light = new THREE.DirectionalLight(0xEFF2A7, 1.6, 1000);
+            light.position.set(0, 500, 500);
+            light.castShadow = true;
+            light.shadowMapWidth = 2048;
+            light.shadowMapHeight = 2048;
+
+            light.shadowCameraFar = 1000;
+            light.shadowDarkness = 0.7;
+
+            scene.add(light);
+
+            // Plane
+            var plane = new THREE.Mesh(new THREE.PlaneGeometry(10000, 10000), new THREE.MeshLambertMaterial({ map: THREE.ImageUtils.loadTexture("grass.jpg") }));
+            plane.receiveShadow = true;
+            plane.material.map.wrapT = plane.material.map.wrapS = THREE.RepeatWrapping;
+            plane.material.map.repeat.set(10, 10);
+            scene.add(plane);
+
+
+            // curve shape
+            var shape = new THREE.Shape(), sWidth = 600, sHeight = 400;
+            shape.moveTo(0, 0);
+            shape.bezierCurveTo(0, sHeight, sWidth, sHeight, sWidth, 0);
+            shape.lineTo(sWidth, sHeight);
+            shape.lineTo(0, sHeight);
+            shape.moveTo(0, 0);
+
+            var extrudeSettings = { amount: 100 };
+            var shape3d = shape.extrude(extrudeSettings);
+
+            var shapePoints = shape.createPointsGeometry();
+            var shapeSpacedPoints = shape.createSpacedPointsGeometry();
+            var material = new THREE.MeshLambertMaterial({ map: THREE.ImageUtils.loadTexture("brown.png") });
+            material.map.wrapT = material.map.wrapS = THREE.RepeatWrapping;
+            material.map.repeat.set(30, 30);
+
+            curve = new THREE.Mesh(shape3d, material);
+            curve.name = "curve";
+            curve.castShadow = true;
+            curve.receiveShadow = true;
+            curve.position.set(-sWidth / 2, sHeight, extrudeSettings.amount / 2);
+            curve.rotation.x = Math.PI;
+            curvePoints = shape3d.vertices;
+            scene.add(curve);
+
+            // ball
+            var sphereRadius = 25;
+            sphere = new THREE.Mesh(new THREE.SphereGeometry(sphereRadius, 32, 32), new THREE.MeshBasicMaterial({ map: THREE.ImageUtils.loadTexture("ball.jpeg") }));
+            sphere.name = "sphere";
+            sphere.useQuaternion = true;
+            sphere.castShadow = true;
+            sphere.position.set(-sWidth / 2 + sphereRadius, 1000, 0);
+            scene.add(sphere);
+
+            renderer = new THREE.WebGLRenderer({ antialiase: true });
+            renderer.gammaInput = renderer.shadowMapEnabled = renderer.physicallyBasedShading = renderer.gammaOutput = true;
+            renderer.setSize(window.innerWidth, window.innerHeight);
+            renderer.setClearColor(scene.fog.color);
+
+            document.body.appendChild(renderer.domElement);
+
+            window.addEventListener("mousedown", function () {
+                updateCameraPos = !updateCameraPos;
+            }, false);
+        }
+
+        function initPhysicsSimulation() {
+            worker.postMessage({ task: "init" });
+
+            // collecting curve info for worker
+
+            var faces = curve.geometry.faces,
+			vertices = curve.geometry.vertices,
+			curveInfo = [];
+
+            faces.forEach(function (f, i, arr) {
+                var convex = [{ x: vertices[f.a].x, y: vertices[f.a].y, z: vertices[f.a].z },
+                { x: vertices[f.b].x, y: vertices[f.b].y, z: vertices[f.b].z },
+                                { x: vertices[f.c].x, y: vertices[f.c].y, z: vertices[f.c].z }];
+                f.d && convex.push({ x: vertices[f.d].x, y: vertices[f.d].y, z: vertices[f.d].z });
+
+                curveInfo.push(convex);
+            });
+
+            worker.postMessage({ task: "addObjectToSimulationWorld", meshName: curve.name, info: curveInfo, shape: "concave", pos: { x: curve.position.x, y: curve.position.y, z: curve.position.z }, rot: { x: curve.rotation.x, y: curve.rotation.y, z: curve.rotation.z }, friction: 0.8 });
+            worker.postMessage({ task: "addObjectToSimulationWorld", meshName: sphere.name, shape: "sphere", friction: 0.8, restitution: 0.7/*, mass: 5*/, pos: { x: sphere.position.x, y: sphere.position.y, z: sphere.position.z }, rot: { x: sphere.rotation.x, y: sphere.rotation.y, z: sphere.rotation.z }, radius: sphere.geometry.boundingSphere.radius });
+
+            worker.onmessage = function (evt) {
+                var data = evt.data;
+                if (!data) return;
+
+                switch (data.task) {
+                    case "syncMesh":
+                        data.meshes.forEach(function (m, idx, arr) {
+                            var mesh = scene.getChildByName(m.meshName);
+
+                            mesh.quaternion.set(m.quat.x, m.quat.y, m.quat.z, m.quat.w);
+                            mesh.position.set(m.pos.x, m.pos.y, m.pos.z);
+                        });
+                        simulating = false;
+                        break;
+                }
+            };
+        }
+
+        function updateCamera() {
+            if (!updateCameraPos) return;
+
+            camera.orbitTheta += 0.008;
+            var cosTheta = Math.cos(camera.orbitTheta),
+			    sinTheta = Math.sin(camera.orbitTheta),
+			    radius = camera.startPosition.z;
+
+            camera.position.set(radius * cosTheta, camera.startPosition.y, radius * sinTheta);
+            camera.lookAt(scene.position);
+        }
+
+        function animate() {
+            if (!simulating) {
+                simulating = true;
+                worker.postMessage({ task: "simulate", dt: clock.getDelta() });
+            }
+
+            updateCamera();
+
+            renderer.render(scene, camera);
+            requestAnimationFrame(animate);
+        }
+	</script>
+</body>
+</html>
