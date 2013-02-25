@@ -1,3 +1,5 @@
+// Author: www.mahdi7s.com
+
 "use strict";
 
 importScripts("ammo.js");
