@@ -2,7 +2,7 @@ I developed a simple 3D web-based simulation of a basketball ball falling on the
 Click on the link below to watch it.
 https://mahdi7s.github.io/ThreeAmmoWebWorker/webworker.html
 
-![alt text](https://github.com/Mahdi7s/ThreeAmmoWebWorker/raw/master/screens/1.png)
-![alt text](https://github.com/Mahdi7s/ThreeAmmoWebWorker/raw/master/screens/2.png)
-![alt text](https://github.com/Mahdi7s/ThreeAmmoWebWorker/raw/master/screens/3.png)
-![alt text](https://github.com/Mahdi7s/ThreeAmmoWebWorker/raw/master/screens/4.png)
+![alt text](https://github.com/Mahdi7s/ThreeAmmoWebWorker/raw/master/screens/1.jpg)
+![alt text](https://github.com/Mahdi7s/ThreeAmmoWebWorker/raw/master/screens/2.jpg)
+![alt text](https://github.com/Mahdi7s/ThreeAmmoWebWorker/raw/master/screens/3.jpg)
+![alt text](https://github.com/Mahdi7s/ThreeAmmoWebWorker/raw/master/screens/4.jpg)
